@@ -1,12 +1,7 @@
 <view class="game-container">
   <view class="modal-overlay" wx:if="{{showModal}}">
     <view class="rules-modal">
-      <image 
-        class="modal-banner" 
-        src="http://picnew11.photophoto.cn/20170315/napolun-22544446_1.jpg" 
-        mode="aspectFill"
-      ></image>
-      
+      <image class="modal-banner" src="http://picnew11.photophoto.cn/20170315/napolun-22544446_1.jpg" mode="aspectFill"></image>
       <view class="modal-content">
         <text class="modal-title">琉璃孤独棋</text>
         <view class="modal-desc">
@@ -19,9 +14,25 @@
     </view>
   </view>
 
+  <view class="modal-overlay" wx:if="{{showResult}}">
+    <view class="rules-modal">
+      <view class="modal-content" style="padding: 60rpx 0;">
+        <text class="result-rank-icon">{{rankIcon}}</text>
+        <text class="modal-title">{{rankName}}</text>
+        <view class="result-info">
+          <text>棋盘上还剩下 {{pieceCount}} 颗棋子</text>
+        </view>
+        <button class="confirm-btn" bindtap="resetGame" style="width: 80%; margin: 40rpx auto 0;">再挑战一次</button>
+      </view>
+    </view>
+  </view>
+
   <view class="header">
     <view class="score-card">剩余骑士：<text class="num">{{pieceCount}}</text></view>
-    <view class="reset-btn" bindtap="resetGame">重新开始</view>
+    <view style="display: flex; gap: 16rpx;">
+      <view class="reset-btn" style="background: #8d6e63;" bindtap="undoMove">撤销</view>
+      <view class="reset-btn" bindtap="resetGame">重置</view>
+    </view>
   </view>
 
   <view class="board-area">
@@ -31,8 +42,7 @@
           <block wx:for="{{row}}" wx:for-index="ci" wx:for-item="cell" wx:key="ci">
             <view wx:if="{{cell}}" 
                   class="cell {{selected.ri === ri && selected.ci === ci ? 'selected' : ''}}" 
-                  data-x="{{cell.x}}" data-y="{{cell.y}}" data-ri="{{ri}}" data-ci="{{ci}}"
-                  bindtap="handleTap">
+                  data-ri="{{ri}}" data-ci="{{ci}}" bindtap="handleTap">
               <view class="piece color-{{cell.color}}" wx:if="{{cell.hasPiece}}"></view>
             </view>
             <view wx:else class="cell-empty"></view>
@@ -41,6 +51,5 @@
       </block>
     </view>
   </view>
-
   <view class="watermark">Copyright © lvyw</view>
 </view>
