@@ -8,7 +8,9 @@ Page({
     isFirst: true,
     history: [], 
     rankIcon: '🏆',
-    rankName: '称号'
+    rankName: '称号',
+    bgmList: ['/sounds/bgm1.mp3', '/sounds/bgm2.mp3'], // 确保你的文件夹里有这两个文件
+    currentBgmIdx: -1
   },
 
   onLoad() {
@@ -16,16 +18,64 @@ Page({
     this.initBoard();
   },
 
+  // --- 音频管理 ---
   initAudio() {
-    this.popAudio = wx.createInnerAudioContext();
-    this.popAudio.src = '/sounds/pop.wav'; 
+    if (wx.setInnerAudioOption) {
+      wx.setInnerAudioOption({
+        obeyMuteSwitch: false,
+        mixWithOtherAudio: true 
+      });
+    }
+  
+    // --- 修改部分：初始化音效池 ---
+    this.popPool = [];
+    this.poolSize = 4; // 准备4个实例轮换，足以应对快速点击
+    this.poolIdx = 0;
+  
+    for (let i = 0; i < this.poolSize; i++) {
+      const audio = wx.createInnerAudioContext();
+      audio.src = '/sounds/pop.wav';
+      audio.volume = 0.8;
+      this.popPool.push(audio);
+    }
+  
+    // 背景音乐保持不变
+    this.bgmAudio = wx.createInnerAudioContext();
+    this.bgmAudio.loop = true;
+    this.bgmAudio.volume = 0.2;
+  },
+
+  // 随机选择并播放 BGM
+  playRandomBGM() {
+    if (!this.bgmAudio || this.data.bgmList.length === 0) return;
+
+    const idx = Math.floor(Math.random() * this.data.bgmList.length);
+    const selectedSrc = this.data.bgmList[idx];
+
+    this.bgmAudio.stop();
+    this.bgmAudio.src = selectedSrc;
+    this.bgmAudio.title = "背景音乐"; // 增加 title 提高兼容性
+    
+    this.bgmAudio.play();
+    console.log("正在播放:", selectedSrc);
   },
 
   playPop() {
-    if (this.popAudio) { this.popAudio.stop(); this.popAudio.play(); }
+    if (this.popPool && this.popPool.length > 0) {
+      // 轮流使用池子里的实例
+      const audio = this.popPool[this.poolIdx];
+      
+      // 重置进度到开头并播放
+      audio.seek(0); 
+      audio.play();
+  
+      // 移动索引到下一个实例
+      this.poolIdx = (this.poolIdx + 1) % this.poolSize;
+    }
   },
 
-  initBoard() {
+// --- 游戏核心逻辑 ---
+ initBoard() {
     const layout = [
       [null, null, [2,7], [3,7], [4,7], null, null],
       [null, [1,6], [2,6], [3,6], [4,6], [5,6], null],
@@ -47,6 +97,7 @@ Page({
       history: [],
       showResult: false
     });
+    // this.startBGM(); // 重置时也重新播放音乐
   },
 
   saveHistory() {
@@ -73,38 +124,41 @@ Page({
 
   handleTap(e) {
     const { ri, ci } = e.currentTarget.dataset;
-    let { boardData, isFirst, selected } = this.data;
-    let cell = boardData[ri][ci];
+    const boardData = this.data.boardData;
+    const cell = boardData[ri][ci];
 
-    if (isFirst && cell.hasPiece) {
-      this.saveHistory();
-      cell.hasPiece = false;
-      this.playPop();
-      this.setData({ boardData, isFirst: false });
-      this.updateCount();
+    // 第一步：点击移除任意一颗棋子开始
+    if (this.data.isFirst) {
+      if (cell && cell.hasPiece) {
+        boardData[ri][ci].hasPiece = false;
+        this.playPop();
+        this.setData({ boardData, isFirst: false });
+        this.updateCount();
+      }
       return;
     }
 
-    if (cell.hasPiece) {
-      this.setData({ selected: { ri, ci, x: cell.x, y: cell.y } });
-    } else if (selected) {
-      const dx = Math.abs(cell.x - selected.x);
-      const dy = Math.abs(cell.y - selected.y);
+    // 第二步：跳棋逻辑
+    if (cell && cell.hasPiece) {
+      // 选中棋子
+      this.setData({ selected: { ri, ci } });
+    } else if (cell && !cell.hasPiece && this.data.selected) {
+      // 尝试移动到空位
+      const sel = this.data.selected;
+      const dr = ri - sel.ri;
+      const dc = ci - sel.ci;
 
-      if ((dx === 2 && dy === 0) || (dy === 2 && dx === 0)) {
-        const mx = (cell.x + selected.x) / 2;
-        const my = (cell.y + selected.y) / 2;
-        let midRi, midCi;
-        boardData.forEach((row, rIdx) => row.forEach((col, cIdx) => {
-          if (col && col.x === mx && col.y === my) { midRi = rIdx; midCi = cIdx; }
-        }));
+      // 检查是否是直线跳跃两格
+      if ((Math.abs(dr) === 2 && dc === 0) || (Math.abs(dc) === 2 && dr === 0)) {
+        const midRi = sel.ri + dr / 2;
+        const midCi = sel.ci + dc / 2;
 
-        if (midRi !== undefined && boardData[midRi][midCi].hasPiece) {
-          this.saveHistory();
+        if (boardData[midRi][midCi].hasPiece) {
+          // 执行消除
+          boardData[sel.ri][sel.ci].hasPiece = false;
           boardData[ri][ci].hasPiece = true;
-          boardData[ri][ci].color = boardData[selected.ri][selected.ci].color;
-          boardData[selected.ri][selected.ci].hasPiece = false;
           boardData[midRi][midCi].hasPiece = false;
+          
           this.playPop();
           this.setData({ boardData, selected: null });
           this.updateCount();
@@ -115,9 +169,10 @@ Page({
 
   updateCount() {
     let count = 0;
-    this.data.boardData.forEach(row => row.forEach(c => { if (c?.hasPiece) count++ }));
+    this.data.boardData.forEach(row => row && row.forEach(c => { if (c?.hasPiece) count++ }));
     this.setData({ pieceCount: count });
 
+    // 检查是否游戏结束
     if (!this.data.isFirst && !this.checkMoves()) {
       this.showRank(count);
     }
@@ -125,12 +180,12 @@ Page({
 
   checkMoves() {
     const b = this.data.boardData;
-    for (let r=0; r<b.length; r++) {
-      for (let c=0; c<b[r].length; c++) {
-        if (!b[r][c]?.hasPiece) continue;
-        const dirs = [[0,2],[0,-2],[2,0],[-2,0]];
+    for (let r = 0; r < b.length; r++) {
+      for (let c = 0; c < b[r].length; c++) {
+        if (!b[r][c] || !b[r][c].hasPiece) continue;
+        const dirs = [[0, 2], [0, -2], [2, 0], [-2, 0]];
         for (let [dr, dc] of dirs) {
-          const tr = r+dr, tc = c+dc, mr = r+dr/2, mc = c+dc/2;
+          const tr = r + dr, tc = c + dc, mr = r + dr / 2, mc = c + dc / 2;
           if (b[tr] && b[tr][tc] && !b[tr][tc].hasPiece && b[mr][mc]?.hasPiece) return true;
         }
       }
@@ -146,6 +201,29 @@ Page({
     this.setData({ showResult: true, rankIcon: icon, rankName: name });
   },
 
-  closeModal() { this.setData({ showModal: false }); },
-  resetGame() { this.initBoard(); }
+  // --- 弹窗与控制逻辑 ---
+  closeModal() {
+    this.setData({ showModal: false });
+    // 关键点：在用户点击“开始挑战”按钮的回调里触发音乐
+    this.playRandomBGM();
+  },
+  
+resetGame() {
+    this.initBoard();
+    this.setData({
+      showResult: false,
+      showModal: false,
+      isFirst: true,
+      history: []
+    });
+    // 重置时可以考虑切换下一首音乐
+    this.playRandomBGM();
+  },
+
+  onUnload() {
+    if (this.bgmAudio) this.bgmAudio.destroy();
+    if (this.popPool) {
+      this.popPool.forEach(audio => audio.destroy());
+    }
+  }
 });

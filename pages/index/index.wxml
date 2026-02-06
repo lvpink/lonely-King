@@ -16,7 +16,7 @@
 
   <view class="modal-overlay" wx:if="{{showResult}}">
     <view class="rules-modal">
-      <view class="modal-content" style="padding: 60rpx 0;">
+      <view class="modal-content" style="padding: 60rpx 40rpx;">
         <text class="result-rank-icon">{{rankIcon}}</text>
         <text class="modal-title">{{rankName}}</text>
         <view class="result-info">
@@ -28,10 +28,13 @@
   </view>
 
   <view class="header">
-    <view class="score-card">剩余骑士：<text class="num">{{pieceCount}}</text></view>
-    <view style="display: flex; gap: 16rpx;">
-      <view class="reset-btn" style="background: #8d6e63;" bindtap="undoMove">撤销</view>
-      <view class="reset-btn" bindtap="resetGame">重置</view>
+    <view class="score-card">
+      <text class="label">剩余：</text>
+      <text class="num">{{pieceCount}}</text>
+    </view>
+    <view class="btn-group">
+      <view class="action-btn undo-btn" bindtap="undoMove">撤销</view>
+      <view class="action-btn reset-btn" bindtap="resetGame">重置</view>
     </view>
   </view>
 
