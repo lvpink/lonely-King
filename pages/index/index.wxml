@@ -1,0 +1,46 @@
+<view class="game-container">
+  <view class="modal-overlay" wx:if="{{showModal}}">
+    <view class="rules-modal">
+      <image 
+        class="modal-banner" 
+        src="http://picnew11.photophoto.cn/20170315/napolun-22544446_1.jpg" 
+        mode="aspectFill"
+      ></image>
+      
+      <view class="modal-content">
+        <text class="modal-title">琉璃孤独棋</text>
+        <view class="modal-desc">
+          <text class="desc-line">1. 点击移除任意一颗珠子开始游戏。</text>
+          <text class="desc-line">2. 跳过一颗珠子并落入空位即可消除它。</text>
+          <text class="desc-line">3. 努力消除，直到棋盘只剩一颗！</text>
+        </view>
+        <button class="confirm-btn" bindtap="closeModal">开始挑战</button>
+      </view>
+    </view>
+  </view>
+
+  <view class="header">
+    <view class="score-card">剩余骑士：<text class="num">{{pieceCount}}</text></view>
+    <view class="reset-btn" bindtap="resetGame">重新开始</view>
+  </view>
+
+  <view class="board-area">
+    <view class="game-board">
+      <block wx:for="{{boardData}}" wx:for-index="ri" wx:for-item="row" wx:key="ri">
+        <view class="board-row">
+          <block wx:for="{{row}}" wx:for-index="ci" wx:for-item="cell" wx:key="ci">
+            <view wx:if="{{cell}}" 
+                  class="cell {{selected.ri === ri && selected.ci === ci ? 'selected' : ''}}" 
+                  data-x="{{cell.x}}" data-y="{{cell.y}}" data-ri="{{ri}}" data-ci="{{ci}}"
+                  bindtap="handleTap">
+              <view class="piece color-{{cell.color}}" wx:if="{{cell.hasPiece}}"></view>
+            </view>
+            <view wx:else class="cell-empty"></view>
+          </block>
+        </view>
+      </block>
+    </view>
+  </view>
+
+  <view class="watermark">Copyright © lvyw</view>
+</view>
