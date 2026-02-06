@@ -104,21 +104,33 @@ Page({
     const { boardData, pieceCount, isFirst } = this.data;
     const history = this.data.history;
     history.push(JSON.stringify({ boardData, pieceCount, isFirst }));
+    if (history.length > 20) {
+      history.shift(); 
+    }
     this.setData({ history });
   },
 
   undoMove() {
-    if (this.data.history.length === 0) {
-      wx.showToast({ title: '无法撤销', icon: 'none' });
+    const history = this.data.history;
+    
+    if (history.length === 0) {
+      wx.showToast({ title: '不能再撤销了', icon: 'none' });
       return;
     }
-    const last = JSON.parse(this.data.history.pop());
+  
+    // 1. 取出最后一次快照并解析回 JSON 对象
+    const lastStateStr = history.pop();
+    const lastState = JSON.parse(lastStateStr);
+  
+    // 2. 恢复状态
     this.setData({
-      boardData: last.boardData,
-      pieceCount: last.pieceCount,
-      isFirst: last.isFirst,
-      history: this.data.history,
-      selected: null
+      boardData: lastState.boardData,
+      pieceCount: lastState.pieceCount,
+      isFirst: lastState.isFirst,
+      history: history, // 更新长度
+      selected: null 
+    }, () => {
+      wx.showToast({ title: '已撤销', icon: 'none', duration: 500 });
     });
   },
 
@@ -126,10 +138,10 @@ Page({
     const { ri, ci } = e.currentTarget.dataset;
     const boardData = this.data.boardData;
     const cell = boardData[ri][ci];
-
-    // 第一步：点击移除任意一颗棋子开始
+  
     if (this.data.isFirst) {
       if (cell && cell.hasPiece) {
+        this.saveHistory(); // --- 新增：移除第一颗棋子前保存历史 ---
         boardData[ri][ci].hasPiece = false;
         this.playPop();
         this.setData({ boardData, isFirst: false });
@@ -137,24 +149,20 @@ Page({
       }
       return;
     }
-
-    // 第二步：跳棋逻辑
+  
     if (cell && cell.hasPiece) {
-      // 选中棋子
       this.setData({ selected: { ri, ci } });
     } else if (cell && !cell.hasPiece && this.data.selected) {
-      // 尝试移动到空位
       const sel = this.data.selected;
       const dr = ri - sel.ri;
       const dc = ci - sel.ci;
-
-      // 检查是否是直线跳跃两格
+  
       if ((Math.abs(dr) === 2 && dc === 0) || (Math.abs(dc) === 2 && dr === 0)) {
         const midRi = sel.ri + dr / 2;
         const midCi = sel.ci + dc / 2;
-
+  
         if (boardData[midRi][midCi].hasPiece) {
-          // 执行消除
+          this.saveHistory(); // --- 新增：跳跃前保存历史 ---
           boardData[sel.ri][sel.ci].hasPiece = false;
           boardData[ri][ci].hasPiece = true;
           boardData[midRi][midCi].hasPiece = false;
@@ -220,6 +228,27 @@ resetGame() {
     this.playRandomBGM();
   },
 
+  // index.js 中的 movePiece 函数内部
+movePiece(ri, ci) {
+  const { selected, boardData, history } = this.data;
+  
+  // --- 关键修改：存入深拷贝的快照 ---
+  const boardSnapshot = JSON.parse(JSON.stringify(boardData));
+  const newHistory = [...history, boardSnapshot];
+
+  // 执行移动逻辑...
+  boardData[selected.ri][selected.ci].hasPiece = false;
+  // ... 其他逻辑 ...
+
+  this.setData({
+    boardData,
+    selected: null,
+    history: newHistory, // 更新历史记录
+    isFirst: false
+  }, () => {
+    this.updateCount();
+  });
+},
   onUnload() {
     if (this.bgmAudio) this.bgmAudio.destroy();
     if (this.popPool) {
