@@ -75,6 +75,6 @@ page { height: 100%; overflow: hidden; }
   text-align: center; /* 文字水平居中 */
   font-size: 22rpx; 
   color: rgba(0, 0, 0, 0.2); 
-  pointer-events: none; /* 确保水印不遮挡下层点击操作 */
+  pointer-events: none; /* 确保水印不会遮挡下层点击操作 */
   z-index: 1;        /* 确保在棋盘底层，不遮挡弹窗 */
 }
