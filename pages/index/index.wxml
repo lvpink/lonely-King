@@ -22,14 +22,65 @@
         <view class="result-info">
           <text>棋盘上还剩下 {{pieceCount}} 颗棋子</text>
         </view>
-        <button class="confirm-btn" bindtap="resetGame" style="width: 80%; margin: 40rpx auto 0;">再挑战一次</button>
+        <button class="confirm-btn" bindtap="handleResultClick" style="width: 80%; margin: 40rpx auto 0;">
+          {{needNickName ? '🌟 记录大名' : '再挑战一次'}}
+        </button>
+        <button class="confirm-btn" bindtap="switchToRank" style="width: 80%; margin: 20rpx auto 0; background: #8d6e63;">查看排行榜</button>
       </view>
     </view>
   </view>
+  <view class="modal-overlay" wx:if="{{showNickNameModal}}" style="z-index: 100000;">
+    <view class="rules-modal">
+      <view class="modal-content">
+        <text class="modal-title">🌟 恭喜破纪录</text>
+        <text style="font-size: 24rpx; color: #999; text-align: center; display: block; margin-bottom: 20rpx;">
+          仅剩 {{tempCount}} 颗！请输入您的榜单昵称
+        </text>
+        <input class="nickname-input" placeholder="输入大名" type="nickname" value="{{defaultNickname}}" bindinput="onInputNickname" style="border: 1rpx solid #ddd; padding: 20rpx; border-radius: 10rpx; margin-bottom: 30rpx;" />
+        <button class="confirm-btn" bindtap="saveNameAndScore">确认并保存</button>
+        <button class="confirm-btn" style="background: #ccc; margin-top: 20rpx;" bindtap="closeNameModal">本次不记录</button>
+      </view>
+    </view>
+  </view>
+  <canvas type="2d" id="confettiCanvas" style="position:fixed; top:0; left:0; width:100vw; height:100vh; pointer-events:none; z-index:999999;">
+  </canvas>
+  
+  <view class="modal-overlay" wx:if="{{showRankModal}}">
+    <view class="rules-modal rank-modal-custom">
+      <view class="modal-content">
+        <text class="modal-title">🏆 智力排行榜</text>
 
+        <scroll-view scroll-y="true" class="rank-scroll">
+          <block wx:for="{{rankList}}" wx:key="_id">
+            <view class="rank-card {{index < 3 ? 'top-three' : ''}}">
+              <view class="rank-number-box">
+                <text wx:if="{{index === 0}}" class="medal">🥇</text>
+                <text wx:elif="{{index === 1}}" class="medal">🥈</text>
+                <text wx:elif="{{index === 2}}" class="medal">🥉</text>
+                <text wx:else class="rank-num">{{index + 1}}</text>
+              </view>
+              <view class="player-main">
+                <text class="player-name">{{item.name}}</text>
+                <text class="player-tag">{{index < 3 ? '顶级智商' : '挑战者'}}</text>
+              </view>
+              <view class="score-section">
+                <text class="score-val">{{item.count}}</text>
+                <text class="score-unit">颗</text>
+              </view>
+            </view>
+          </block>
+        </scroll-view>
+
+        <view class="rank-btn-group">
+          <button wx:if="{{needNickName}}" class="back-btn" bindtap="closeRank">返回</button>
+          <button class="confirm-btn restart-btn" bindtap="startNewGame" style="{{needNickName ? '' : 'width: 100%;'}}">开始新挑战</button>
+        </view>
+      </view>
+    </view>
+  </view>
+ 
   <view class="header">
-    <view class="score-card">
-      <text class="label">剩余：</text>
+    <view class="score-card" bindtap="triggerCelebration"> <text class="label">剩余：</text>
       <text class="num">{{pieceCount}}</text>
     </view>
     <view class="btn-group">
@@ -43,10 +94,8 @@
       <block wx:for="{{boardData}}" wx:for-index="ri" wx:for-item="row" wx:key="ri">
         <view class="board-row">
           <block wx:for="{{row}}" wx:for-index="ci" wx:for-item="cell" wx:key="ci">
-            <view wx:if="{{cell}}" 
-                  class="cell {{selected.ri === ri && selected.ci === ci ? 'selected' : ''}}" 
-                  data-ri="{{ri}}" data-ci="{{ci}}" bindtap="handleTap">
-              <view class="piece color-{{cell.color}}" wx:if="{{cell.hasPiece}}"></view>
+            <view wx:if="{{cell}}" class="cell {{selected.ri === ri && selected.ci === ci ? 'selected' : ''}} {{!cell.hasPiece ? 'hole' : ''}}" bindtap="onCellTap" data-ri="{{ri}}" data-ci="{{ci}}">
+              <view wx:if="{{cell.hasPiece}}" class="piece color-{{cell.color}}"></view>
             </view>
             <view wx:else class="cell-empty"></view>
           </block>
@@ -54,5 +103,7 @@
       </block>
     </view>
   </view>
+
   <view class="watermark">Copyright © lvyw</view>
+
 </view>

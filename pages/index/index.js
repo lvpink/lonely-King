@@ -1,89 +1,88 @@
+// 在 Page 外面定义动画控制变量
+let animationId = null;
 Page({
   data: {
     showModal: true,
     showResult: false,
+    showRankModal: false,
+    showNickNameModal: false,
     pieceCount: 37,
     boardData: [],
     selected: null,
     isFirst: true,
-    history: [], 
-    rankIcon: '🏆',
-    rankName: '称号',
-    bgmList: ['/sounds/bgm1.mp3', '/sounds/bgm2.mp3'], // 确保你的文件夹里有这两个文件
-    currentBgmIdx: -1
+    history: [],
+    rankList: [],
+    tempCount: 0,
+    rankIcon: '😅',
+    fireworks: [], 
+    showConfetti: false,
+    rankName: '再接再厉',
+    isSubmitting: false,
+    bgmList: ['/sounds/bgm1.mp3', '/sounds/bgm2.mp3'],
+    defaultNickname: wx.getStorageSync('user_nickname') || ''
   },
 
   onLoad() {
     this.initAudio();
     this.initBoard();
+    this.fetchRankList();
   },
 
   // --- 音频管理 ---
   initAudio() {
     if (wx.setInnerAudioOption) {
-      wx.setInnerAudioOption({
-        obeyMuteSwitch: false,
-        mixWithOtherAudio: true 
-      });
+      wx.setInnerAudioOption({ obeyMuteSwitch: false, mixWithOtherAudio: true });
     }
-  
-    // --- 修改部分：初始化音效池 ---
     this.popPool = [];
-    this.poolSize = 4; // 准备4个实例轮换，足以应对快速点击
+    this.poolSize = 4;
     this.poolIdx = 0;
-  
     for (let i = 0; i < this.poolSize; i++) {
       const audio = wx.createInnerAudioContext();
       audio.src = '/sounds/pop.wav';
-      audio.volume = 0.8;
       this.popPool.push(audio);
     }
-  
-    // 背景音乐保持不变
     this.bgmAudio = wx.createInnerAudioContext();
     this.bgmAudio.loop = true;
     this.bgmAudio.volume = 0.2;
   },
 
-  // 随机选择并播放 BGM
-  playRandomBGM() {
-    if (!this.bgmAudio || this.data.bgmList.length === 0) return;
-
-    const idx = Math.floor(Math.random() * this.data.bgmList.length);
-    const selectedSrc = this.data.bgmList[idx];
-
-    this.bgmAudio.stop();
-    this.bgmAudio.src = selectedSrc;
-    this.bgmAudio.title = "背景音乐"; // 增加 title 提高兼容性
-    
-    this.bgmAudio.play();
-    console.log("正在播放:", selectedSrc);
-  },
-
   playPop() {
-    if (this.popPool && this.popPool.length > 0) {
-      // 轮流使用池子里的实例
-      const audio = this.popPool[this.poolIdx];
-      
-      // 重置进度到开头并播放
-      audio.seek(0); 
+    const audio = this.popPool[this.poolIdx];
+    if (audio) {
+      audio.seek(0);
       audio.play();
-  
-      // 移动索引到下一个实例
       this.poolIdx = (this.poolIdx + 1) % this.poolSize;
     }
   },
 
-// --- 游戏核心逻辑 ---
- initBoard() {
+  playRandomBGM() {
+     // 1. 先停止当前播放，清除缓冲区
+    if (this.bgmAudio) {
+      this.bgmAudio.stop(); 
+    }
+
+    const idx = Math.floor(Math.random() * this.data.bgmList.length);
+    const newSrc = this.data.bgmList[idx];
+
+    // 2. 检查：如果随机到的还是同一首歌且正在播放，可以不处理，或者强制重头开始
+    // 这里直接强制换源播放
+    this.bgmAudio.src = newSrc;
+  
+    // 3. 微信小程序音频的一个“坑”：
+    // 最好在 onCanplay 回调中执行 play，或者显式 seek(0)
+    this.bgmAudio.play();
+  },
+
+  // --- 游戏核心逻辑 ---
+  initBoard() {
     const layout = [
-      [null, null, [2,7], [3,7], [4,7], null, null],
-      [null, [1,6], [2,6], [3,6], [4,6], [5,6], null],
-      [[0,5], [1,5], [2,5], [3,5], [4,5], [5,5], [6,5]],
-      [[0,4], [1,4], [2,4], [3,4], [4,4], [5,4], [6,4]],
-      [[0,3], [1,3], [2,3], [3,3], [4,3], [5,3], [6,3]],
-      [null, [1,2], [2,2], [3,2], [4,2], [5,2], null],
-      [null, null, [2,1], [3,1], [4,1], null, null]
+      [null, null, [2, 7], [3, 7], [4, 7], null, null],
+      [null, [1, 6], [2, 6], [3, 6], [4, 6], [5, 6], null],
+      [[0, 5], [1, 5], [2, 5], [3, 5], [4, 5], [5, 5], [6, 5]],
+      [[0, 4], [1, 4], [2, 4], [3, 4], [4, 4], [5, 4], [6, 4]],
+      [[0, 3], [1, 3], [2, 3], [3, 3], [4, 3], [5, 3], [6, 3]],
+      [null, [1, 2], [2, 2], [3, 2], [4, 2], [5, 2], null],
+      [null, null, [2, 1], [3, 1], [4, 1], null, null]
     ];
     let board = layout.map(row => row.map(cell => cell ? {
       x: cell[0], y: cell[1], hasPiece: true, color: Math.floor(Math.random() * 5) + 1
@@ -95,106 +94,129 @@ Page({
       selected: null,
       pieceCount: 37,
       history: [],
-      showResult: false
-    });
-    // this.startBGM(); // 重置时也重新播放音乐
-  },
-
-  saveHistory() {
-    const { boardData, pieceCount, isFirst } = this.data;
-    const history = this.data.history;
-    history.push(JSON.stringify({ boardData, pieceCount, isFirst }));
-    if (history.length > 20) {
-      history.shift(); 
-    }
-    this.setData({ history });
-  },
-
-  undoMove() {
-    const history = this.data.history;
-    
-    if (history.length === 0) {
-      wx.showToast({ title: '不能再撤销了', icon: 'none' });
-      return;
-    }
-  
-    // 1. 取出最后一次快照并解析回 JSON 对象
-    const lastStateStr = history.pop();
-    const lastState = JSON.parse(lastStateStr);
-  
-    // 2. 恢复状态
-    this.setData({
-      boardData: lastState.boardData,
-      pieceCount: lastState.pieceCount,
-      isFirst: lastState.isFirst,
-      history: history, // 更新长度
-      selected: null 
-    }, () => {
-      wx.showToast({ title: '已撤销', icon: 'none', duration: 500 });
+      showResult: false,
+      showNickNameModal: false
     });
   },
 
-  handleTap(e) {
+  onCellTap(e) {
     const { ri, ci } = e.currentTarget.dataset;
-    const boardData = this.data.boardData;
-    const cell = boardData[ri][ci];
-  
     if (this.data.isFirst) {
-      if (cell && cell.hasPiece) {
-        this.saveHistory(); // --- 新增：移除第一颗棋子前保存历史 ---
-        boardData[ri][ci].hasPiece = false;
+      this.removeFirstPiece(ri, ci);
+    } else {
+      this.handleMove(ri, ci);
+    }
+  },
+
+  removeFirstPiece(ri, ci) {
+    let board = this.data.boardData;
+    // --- 新增：在修改前，记录当前棋盘状态到历史记录中 ---
+  const history = [...this.data.history, JSON.parse(JSON.stringify(board))];
+    board[ri][ci].hasPiece = false;
+    this.playPop();
+    this.setData({ boardData: board, pieceCount: 36, isFirst: false ,history: history });
+  },
+
+  handleMove(ri, ci) {
+    const { selected, boardData } = this.data;
+    if (!selected) {
+      if (boardData[ri][ci].hasPiece) this.setData({ selected: { ri, ci } });
+    } else {
+      if (selected.ri === ri && selected.ci === ci) {
+        this.setData({ selected: null });
+      } else if (boardData[ri][ci].hasPiece) {
+        this.setData({ selected: { ri, ci } });
+      } else {
+        this.executeMove(selected.ri, selected.ci, ri, ci);
+      }
+    }
+  },
+
+  executeMove(r1, c1, r2, c2) {
+    const dr = r2 - r1, dc = c2 - c1;
+    if ((Math.abs(dr) === 2 && dc === 0) || (Math.abs(dc) === 2 && dr === 0)) {
+      const mr = r1 + dr / 2, mc = c1 + dc / 2;
+      let board = JSON.parse(JSON.stringify(this.data.boardData));
+      if (board[mr][mc].hasPiece) {
+        const history = [...this.data.history, JSON.parse(JSON.stringify(this.data.boardData))];
+        board[r1][c1].hasPiece = false;
+        board[mr][mc].hasPiece = false;
+        board[r2][c2].hasPiece = true;
+        board[r2][c2].color = board[r1][c1].color;
+
         this.playPop();
-        this.setData({ boardData, isFirst: false });
-        this.updateCount();
-      }
-      return;
-    }
-  
-    if (cell && cell.hasPiece) {
-      this.setData({ selected: { ri, ci } });
-    } else if (cell && !cell.hasPiece && this.data.selected) {
-      const sel = this.data.selected;
-      const dr = ri - sel.ri;
-      const dc = ci - sel.ci;
-  
-      if ((Math.abs(dr) === 2 && dc === 0) || (Math.abs(dc) === 2 && dr === 0)) {
-        const midRi = sel.ri + dr / 2;
-        const midCi = sel.ci + dc / 2;
-  
-        if (boardData[midRi][midCi].hasPiece) {
-          this.saveHistory(); // --- 新增：跳跃前保存历史 ---
-          boardData[sel.ri][sel.ci].hasPiece = false;
-          boardData[ri][ci].hasPiece = true;
-          boardData[midRi][midCi].hasPiece = false;
-          
-          this.playPop();
-          this.setData({ boardData, selected: null });
-          this.updateCount();
-        }
+        this.setData({
+          boardData: board,
+          pieceCount: this.data.pieceCount - 1,
+          selected: null,
+          history
+        }, () => {
+          this.checkGameOver();
+        });
       }
     }
   },
-
-  updateCount() {
-    let count = 0;
-    this.data.boardData.forEach(row => row && row.forEach(c => { if (c?.hasPiece) count++ }));
-    this.setData({ pieceCount: count });
-
-    // 检查是否游戏结束
-    if (!this.data.isFirst && !this.checkMoves()) {
-      this.showRank(count);
+  checkGameOver() {
+    if (this.hasAvailableMoves()) return;
+  
+    const count = this.data.pieceCount;
+    const savedName = wx.getStorageSync('user_nickname');
+    const lastBest = wx.getStorageSync('best_score') || 99;
+    const isNewRecord = count < lastBest;
+    const isQualified = count <= 5;
+  
+    if (isNewRecord) {
+      wx.setStorageSync('best_score', count);
+    }
+  
+    // 1. 判定是否符合上榜且没名字
+    const needNickName = isQualified && !savedName;
+  
+    // 2. 存入状态，先显示普通结果弹窗
+    this.setData({
+      tempCount: count,
+      needNickName: needNickName
+    });
+  
+    // 3. 静默上传（已有名字的情况）
+    if (isQualified && isNewRecord && savedName) {
+      this.doSaveRecord(savedName, count);
+    }
+  
+    // 4. 表现好就先放一波烟花
+    if (count <= 3) {
+      this.triggerCelebration();
     }
   },
-
-  checkMoves() {
+  handleResultClick() {
+    if (this.data.needNickName) {
+      // 隐藏结果，开启起名弹窗
+      this.setData({
+        showResult: false,
+        showNickNameModal: true,
+        needNickName: false // 消耗掉这个状态
+      });
+      
+      // 延迟触发烟花，解决 Canvas 在弹窗切换时节点渲染的问题
+      setTimeout(() => {
+        this.triggerCelebration();
+      }, 300);
+    } else {
+      // 没破纪录或已有名字，直接重置游戏
+      this.resetGame();
+    }
+  },
+  
+  hasAvailableMoves() {
     const b = this.data.boardData;
-    for (let r = 0; r < b.length; r++) {
-      for (let c = 0; c < b[r].length; c++) {
-        if (!b[r][c] || !b[r][c].hasPiece) continue;
-        const dirs = [[0, 2], [0, -2], [2, 0], [-2, 0]];
-        for (let [dr, dc] of dirs) {
-          const tr = r + dr, tc = c + dc, mr = r + dr / 2, mc = c + dc / 2;
-          if (b[tr] && b[tr][tc] && !b[tr][tc].hasPiece && b[mr][mc]?.hasPiece) return true;
+    for (let r = 0; r < 7; r++) {
+      for (let c = 0; c < 7; c++) {
+        if (b[r] && b[r][c] && b[r][c].hasPiece) {
+          const dirs = [[0, 2], [0, -2], [2, 0], [-2, 0]];
+          for (const [dr, dc] of dirs) {
+            const tr = r + dr, tc = c + dc, mr = r + dr / 2, mc = c + dc / 2;
+            if (b[tr] && b[tr][tc] && !b[tr][tc].hasPiece && b[mr][mc] && b[mr][mc].hasPiece) return true;
+          }
         }
       }
     }
@@ -202,57 +224,320 @@ Page({
   },
 
   showRank(count) {
-    let icon = '😅', name = '再接再厉';
-    if (count === 1) { icon = '🏆'; name = '孤独求败'; }
-    else if (count <= 3) { icon = '🥇'; name = '智力大师'; }
-    else if (count <= 5) { icon = '🥈'; name = '棋坛高手'; }
-    this.setData({ showResult: true, rankIcon: icon, rankName: name });
+    let rankData = {
+      1: { icon: '👑', name: '神之境界', color: '#ff4400' },
+      2: { icon: '🌟', name: '智力巅峰', color: '#ff8800' },
+      3: { icon: '🔥', name: '棋坛精英', color: '#ffaa00' }
+    };
+    const currentRank = rankData[count] || { icon: '👍', name: '继续努力', color: '#888' };
+
+    this.setData({
+      showResult: true,
+      rankIcon: currentRank.icon,
+      rankName: currentRank.name,
+      rankColor: currentRank.color, // 可以在页面上动态绑定文字颜色
+      tempCount: count
+    });
+  },
+  closeRank() {
+    // 1. 先关闭排行榜
+    this.setData({ showRankModal: false });
+  
+    // 2. 核心判断：
+    // 如果当前是挑战结束状态（showResult 之前被 switchToRank 关掉的），就把它重新打开
+    // 如果 needNickName 还是 true，说明用户还没存名字呢，得让他看结算页去点“记录大名”
+    if (this.data.pieceCount < 37) { // 只要不是初始状态
+      this.setData({
+        showResult: true 
+      });
+    }
   },
 
-  // --- 弹窗与控制逻辑 ---
-  closeModal() {
-    this.setData({ showModal: false });
-    // 关键点：在用户点击“开始挑战”按钮的回调里触发音乐
-    this.playRandomBGM();
-  },
+  // 修改触发烟花的方法
+  triggerCelebration() {
+    const query = wx.createSelectorQuery();
+    query.select('#confettiCanvas')
+      .node()
+      .exec((res) => {
+        if (!res || !res[0]) return;
   
-resetGame() {
+        const canvas = res[0].node;
+        const ctx = canvas.getContext('2d');
+        const systemInfo = wx.getSystemInfoSync();
+        const dpr = systemInfo.pixelRatio;
+  
+        canvas.width = systemInfo.windowWidth * dpr;
+        canvas.height = systemInfo.windowHeight * dpr;
+        ctx.scale(dpr, dpr);
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+  
+        const particles = [];
+        const colors = ['#ff4d4f', '#ffec3d', '#73d13d', '#40a9ff', '#9254de', '#ffffff'];
+  
+        const createParticle = (x, y, angle) => {
+          return {
+            x: x,
+            y: y,
+            // 初始速度：让纸屑更有冲力
+            v: Math.random() * 20 + 15, 
+            angle: angle + (Math.random() - 0.5) * 1.0, 
+            color: colors[Math.floor(Math.random() * colors.length)],
+            // 形状大小多样化
+            r: Math.random() * 4 + 2, 
+            // 增加旋转角度，模拟纸片翻转
+            rotation: Math.random() * Math.PI,
+            rotationSpeed: (Math.random() - 0.5) * 0.2,
+            alpha: 1,
+            gravity: 0.2, // 模拟重力
+            friction: 0.95 // 模拟空气阻力
+          };
+        };
+  
+        let frameCount = 0;
+        const render = () => {
+          if (frameCount < 60) {
+            for (let i = 0; i < 4; i++) {
+              // 左边中点：x=0, y=屏幕高度一半。角度：向右上方喷 (-Math.PI / 6)
+              particles.push(createParticle(0, systemInfo.windowHeight / 2, -Math.PI / 6));
+              
+              // 右边中点：x=宽度, y=屏幕高度一半。角度：向左上方喷 (-Math.PI * 5 / 6)
+              particles.push(createParticle(systemInfo.windowWidth, systemInfo.windowHeight / 2, -Math.PI * 5 / 6));
+            }
+            frameCount++;
+          }
+  
+          ctx.clearRect(0, 0, systemInfo.windowWidth, systemInfo.windowHeight);
+  
+          for (let i = particles.length - 1; i >= 0; i--) {
+            const p = particles[i];
+            p.x += Math.cos(p.angle) * p.v;
+            p.y += Math.sin(p.angle) * p.v + p.gravity;
+            p.v *= p.friction;
+            p.gravity += 0.08;
+            p.alpha -= 0.015;
+  
+            if (p.alpha <= 0) {
+              particles.splice(i, 1);
+              continue;
+            }
+
+            ctx.save();
+            ctx.translate(p.x, p.y);
+            ctx.rotate(p.rotation);
+            ctx.globalAlpha = p.alpha;
+            ctx.fillStyle = p.color;
+            // 绘制长方形纸屑比圆形更真实
+            ctx.fillRect(-p.r, -p.r, p.r * 2, p.r * 1.5); 
+            ctx.restore();
+
+            p.rotation += p.rotationSpeed; // 更新旋转
+          }
+  
+          if (particles.length > 0) {
+            canvas.requestAnimationFrame(render);
+          } else {
+            ctx.clearRect(0, 0, systemInfo.windowWidth, systemInfo.windowHeight);
+          }
+        };
+  
+        render();
+      });
+  },
+
+  switchToRank() {
+    this.setData({ showResult: false, showRankModal: true });
+    this.fetchRankList();
+  },
+
+  fetchRankList() {
+    const db = wx.cloud.database();
+    db.collection('rank-king').orderBy('count', 'asc').limit(10).get({
+      success: res => this.setData({ rankList: res.data }),
+      fail: err => console.error("获取排行失败", err)
+    });
+  },
+
+  onNameConfirm(e) {
+    const name = e.detail.value.nickname;
+    if (!name || name.trim() === '') {
+      wx.showToast({ title: '没有留下大名~', icon: 'none' });
+      this.setData({ showNickNameModal: false, showResult: true }); // 退回结果页
+      return;
+    }
+
+    wx.setStorageSync('user_nickname', name);
+    this.setData({ defaultNickname: name, showNickNameModal: false, showResult: true });
+    // 2. 延迟放烟花，确保 Canvas 节点此时是可见且可用的
+    setTimeout(() => {
+      this.triggerCelebration();
+    }, 300);
+    // 保存并刷新
+    this.doSaveRecord(name, this.data.tempCount);
+  },
+// 1. 实时监听输入框（防止 type="nickname" 在 submit 时取不到值）
+onInputNickname(e) {
+  this.setData({
+    defaultNickname: e.detail.value
+  });
+},
+
+// 2. 确认保存按钮
+saveNameAndScore() {
+  const name = this.data.defaultNickname;
+  if (!name || name.trim() === '') {
+    wx.showToast({ title: '请输入名字', icon: 'none' });
+    return;
+  }
+
+  wx.setStorageSync('user_nickname', name);
+  
+  // 关闭所有弹窗并进入排行榜
+  this.setData({ 
+    showNickNameModal: false,
+    showResult: false ,
+    needNickName: false, // 关键：标记已经记录过了
+    showRankModal: true  // 记录完通常会自动展示排行榜
+  });
+
+  // 最终成功的烟花
+  setTimeout(() => {
+    this.triggerCelebration();
+    // this.switchToRank(); 
+  }, 300);
+
+  this.doSaveRecord(name, this.data.tempCount);
+  this.fetchRankList();
+},
+
+// 3. 修改 checkGameOver 里的触发逻辑
+checkGameOver() {
+  if (this.hasAvailableMoves()) return;
+
+  const count = this.data.pieceCount;
+  const savedName = wx.getStorageSync('user_nickname');
+  const lastBest = wx.getStorageSync('best_score') || 99;
+  const isNewRecord = count < lastBest;
+  const isQualified = count <= 5;
+
+  // 更新本地最高分记录
+  if (isNewRecord) {
+    wx.setStorageSync('best_score', count);
+  }
+
+  // 判定是否需要后续起名（符合资格且没存过名字）
+  const needNickName = isQualified && !savedName;
+
+  // 1. 始终先显示结果弹窗
+  this.showRank(count);
+
+  // 2. 将起名状态存入 data，但不立刻显示起名弹窗
+  this.setData({
+    tempCount: count,
+    needNickName: needNickName 
+  });
+
+  // 3. 如果已经有名字且破纪录，直接静默上传
+  if (isQualified && isNewRecord && savedName) {
+    this.doSaveRecord(savedName, count);
+  }
+
+  // 4. 表现好就放烟花
+  if (count <= 3) {
+    this.triggerCelebration();
+  }
+},
+  closeNameModal() {
+    this.setData({ showNickNameModal: false, showResult: true });
+  },
+
+  doSaveRecord(name, count) {
+    if (this.data.isSubmitting) return;
+    this.setData({ isSubmitting: true });
+    wx.showLoading({ title: '记录中...' });
+    
+    const db = wx.cloud.database();
+    db.collection('rank-king').where({ name: name }).get().then(res => {
+      if (res.data.length > 0) {
+        const docId = res.data[0]._id;
+        if (count < res.data[0].count) {
+          return db.collection('rank-king').doc(docId).update({
+            data: { count: count, createTime: db.serverDate() }
+          });
+        }
+      } else {
+        return db.collection('rank-king').add({
+          data: { name, count, createTime: db.serverDate() }
+        });
+      }
+    }).then(() => {
+      this.afterSaveSuccess();
+    }).catch(err => {
+      console.error(err);
+    }).finally(() => {
+      wx.hideLoading();
+      this.setData({ isSubmitting: false });
+    });
+  },
+
+  afterSaveSuccess() {
+    wx.showToast({ title: '金榜题名！' });
+    this.fetchRankList();
+  },
+
+  undoMove() {
+    // 1. 获取当前的历史记录数组
+    const history = this.data.history;
+    if (history.length === 0) return;
+  
+    // 2. 取出最近的一次记录
+    const lastBoardState = history.pop();
+    
+    // 3. 关键点：判断撤销后是否回到了初始状态
+    // 如果 pop 之后 history 空了，说明刚才撤销的是“移除第一颗棋”的操作
+    const isBackToFirst = history.length === 0;
+  
+    // 4. 计算棋子数量
+    // 如果回到了第一步，数量恢复到 37，否则就是当前数量 + 1
+    const newPieceCount = isBackToFirst ? 37 : this.data.pieceCount + 1;
+  
+    this.setData({
+      boardData: lastBoardState,
+      pieceCount: newPieceCount,
+      history: history, // 更新掉刚才 pop 后的数组
+      selected: null,
+      isFirst: isBackToFirst // 恢复第一步的状态标记
+    });
+  },
+
+  closeModal() { 
+    this.setData({ showModal: false }); 
+    if(this.bgmAudio.paused) this.playRandomBGM(); 
+  },
+
+  resetGame() {
+     // 重置时可以考虑切换下一首音乐
+     this.playRandomBGM();
     this.initBoard();
     this.setData({
       showResult: false,
-      showModal: false,
-      isFirst: true,
+      showRankModal: false,
+      showNickNameModal: false,
+      selected: null,
       history: []
     });
-    // 重置时可以考虑切换下一首音乐
-    this.playRandomBGM();
   },
 
-  // index.js 中的 movePiece 函数内部
-movePiece(ri, ci) {
-  const { selected, boardData, history } = this.data;
-  
-  // --- 关键修改：存入深拷贝的快照 ---
-  const boardSnapshot = JSON.parse(JSON.stringify(boardData));
-  const newHistory = [...history, boardSnapshot];
+  startNewGame() {
+    this.resetGame();
+  },
 
-  // 执行移动逻辑...
-  boardData[selected.ri][selected.ci].hasPiece = false;
-  // ... 其他逻辑 ...
-
-  this.setData({
-    boardData,
-    selected: null,
-    history: newHistory, // 更新历史记录
-    isFirst: false
-  }, () => {
-    this.updateCount();
-  });
-},
   onUnload() {
     if (this.bgmAudio) this.bgmAudio.destroy();
     if (this.popPool) {
       this.popPool.forEach(audio => audio.destroy());
+    }
+    if (animationId) {
+      // 如果使用了 canvas.requestAnimationFrame，需要根据对应平台处理停止
     }
   }
 });
