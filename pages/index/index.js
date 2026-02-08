@@ -156,45 +156,13 @@ Page({
       }
     }
   },
-  checkGameOver() {
-    if (this.hasAvailableMoves()) return;
-  
-    const count = this.data.pieceCount;
-    const savedName = wx.getStorageSync('user_nickname');
-    const lastBest = wx.getStorageSync('best_score') || 99;
-    const isNewRecord = count < lastBest;
-    const isQualified = count <= 5;
-  
-    if (isNewRecord) {
-      wx.setStorageSync('best_score', count);
-    }
-  
-    // 1. 判定是否符合上榜且没名字
-    const needNickName = isQualified && !savedName;
-  
-    // 2. 存入状态，先显示普通结果弹窗
-    this.setData({
-      tempCount: count,
-      needNickName: needNickName
-    });
-  
-    // 3. 静默上传（已有名字的情况）
-    if (isQualified && isNewRecord && savedName) {
-      this.doSaveRecord(savedName, count);
-    }
-  
-    // 4. 表现好就先放一波烟花
-    if (count <= 3) {
-      this.triggerCelebration();
-    }
-  },
   handleResultClick() {
     if (this.data.needNickName) {
       // 隐藏结果，开启起名弹窗
       this.setData({
         showResult: false,
-        showNickNameModal: true,
-        needNickName: false // 消耗掉这个状态
+        showNickNameModal: true
+        // needNickName: false // 注意：这里不要急着把 needNickName 设为 false，防止用户起名中途退出
       });
       
       // 延迟触发烟花，解决 Canvas 在弹窗切换时节点渲染的问题
@@ -417,7 +385,7 @@ checkGameOver() {
   const savedName = wx.getStorageSync('user_nickname');
   const lastBest = wx.getStorageSync('best_score') || 99;
   const isNewRecord = count < lastBest;
-  const isQualified = count <= 5;
+  const isQualified = count <= 10;
 
   // 更新本地最高分记录
   if (isNewRecord) {
@@ -442,7 +410,7 @@ checkGameOver() {
   }
 
   // 4. 表现好就放烟花
-  if (count <= 3) {
+  if (count <= 10) {
     this.triggerCelebration();
   }
 },
