@@ -287,11 +287,7 @@ page {
 .confirm-btn-small { background: #4caf50; color: #fff; flex: 2; border-radius: 50rpx; }
 .cancel-btn { background: #ccc; color: #fff; flex: 1; border-radius: 50rpx; }
 
-/* --- 6. 其他 --- */
-.watermark { 
-  position: fixed; bottom: 30rpx; width: 100%; text-align: center; 
-  font-size: 22rpx; color: rgba(0, 0, 0, 0.15); pointer-events: none; 
-}
+
 
 .empty-tip { text-align: center; padding: 40rpx; color: #999; font-size: 26rpx; }
 

@@ -104,6 +104,11 @@
     </view>
   </view>
 
-  <view class="watermark">Copyright © lvyw</view>
+  <view class="footer-watermark" wx:if="{{!showModal && !showResult && !showNickNameModal && !showRankModal}}">
+    <view class="double-color-text">
+      <text class="base-text">Copyright © lvyw</text>
+      <text class="top-text">Copyright © lvyw</text>
+    </view>
+  </view>
 
 </view>
