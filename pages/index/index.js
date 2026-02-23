@@ -1,3 +1,7 @@
+// 注意路径深度，根据你的文件实际位置调整
+const { encrypt } = require('../../utils/encrypt.js');
+// app.js 或在 Page 顶部定义
+const LAF_URL = "https://rf3pmm2lnj.sealosbja.site"; // 替换为你在Laf后台看到的域名
 // 在 Page 外面定义动画控制变量
 let animationId = null;
 Page({
@@ -18,34 +22,101 @@ Page({
     showConfetti: false,
     rankName: '再接再厉',
     isSubmitting: false,
+    isCloudSyncing: true, // 标记云端数据是否同步完成
     hasCloudName: false, // 标记云端是否有名字
+    needNickName: false,
     bgmList: ['/sounds/bgm1.mp3', '/sounds/bgm2.mp3'],
     defaultNickname: wx.getStorageSync('user_nickname') || ''
   },
 
   onLoad() {
-    this.checkUserCloudRecord(); // 新增：检查云端记录
+    const testModule = require('../../utils/encrypt.js');
+console.log('1. 工具包加载结果:', testModule);
+console.log('2. encrypt函数是否存在:', typeof testModule.encrypt);
+
+try {
+  const result = testModule.encrypt("test");
+  console.log('3. 加密测试成功:', result);
+} catch (e) {
+  console.error('4. 运行加密函数报错:', e);
+}
     this.initAudio();
     this.initBoard();
-    this.fetchRankList();
-  },
-  checkUserCloudRecord() {
-    const db = wx.cloud.database();
-    // 注意：云函数或云数据库查询会自动带上当前用户的 OpenID
-    db.collection('rank-king').where({
-      _openid: '{openid}' // 微信会自动识别当前用户
-    }).get().then(res => {
-      if (res.data.length > 0) {
-        const cloudName = res.data[0].name;
-        // 查到了就同步到本地缓存，并更新状态
-        wx.setStorageSync('user_nickname', cloudName);
-        this.setData({ 
-          defaultNickname: cloudName,
-          hasCloudName: true 
-        });
+    
+    wx.showLoading({ title: '同步数据中...', mask: true });
+    wx.login({
+      success: (res) => {
+        if (res.code) {
+          // 这里的 encrypt 就不会报 ReferenceError 了
+          const encryptedCode = encrypt(res.code);
+          console.log("--- 密文长相 ---", encryptedCode);
+          wx.request({
+            url: `${LAF_URL}/get-openid`,
+            method: 'POST',
+            // 2. 🚩 修改这里：必须传加密后的变量，且字段名要跟云函数 ctx.body.code 对应
+            // 如果你云函数写的是 const { code } = ctx.body，那就传 code: encryptedCode
+            data: { code: encryptedCode }, 
+            success: (lafRes) => {
+              console.log("Laf 返回结果:", lafRes.data);
+              
+              if (lafRes.data && lafRes.data.openid) {
+                const openid = lafRes.data.openid;
+                wx.setStorageSync('user_openid', openid);
+                this.setData({ user_openid: openid });
+                this.checkUserCloudRecord();
+                this.fetchRankList();
+              } else {
+                // 这里加个报错提示，方便你调试
+                console.error("未能获取 OpenID:", lafRes.data.msg || "未知错误");
+                this.setData({ isCloudSyncing: false });
+                wx.hideLoading();
+              }
+            },
+            fail: (err) => {
+              console.error("网络请求失败:", err);
+              this.setData({ isCloudSyncing: false });
+              wx.hideLoading();
+            }
+          });
+        }
+      },
+      fail: () => {
+        this.setData({ isCloudSyncing: false });
+        wx.hideLoading();
       }
     });
   },
+// --- 1. 修改：检查云端记录 ---
+checkUserCloudRecord() {
+  const openid = this.data.user_openid || wx.getStorageSync('user_openid');
+  if (!openid) {
+    this.setData({ isCloudSyncing: false });
+    return;
+  }
+
+  wx.request({
+    url: `${LAF_URL}/get-user-score`,
+    method: 'POST',
+    data: { openid: openid },
+    success: (res) => {
+      if (res.data && res.data.data) {
+        const record = res.data.data;
+        wx.setStorageSync('user_nickname', record.name);
+        wx.setStorageSync('best_score', record.count); 
+        this.setData({ 
+          defaultNickname: record.name,
+          cloudBestScore: record.count, 
+          hasCloudName: true
+        });
+      }
+    },
+    complete: () => {
+      // 🚩 不管成功还是失败，只要请求结束，必须释放锁
+      this.setData({ isCloudSyncing: false });
+      wx.hideLoading();
+    }
+  });
+},
 
   // --- 音频管理 ---
   initAudio() {
@@ -335,13 +406,18 @@ Page({
     this.fetchRankList();
   },
 
-  fetchRankList() {
-    const db = wx.cloud.database();
-    db.collection('rank-king').orderBy('count', 'asc').limit(10).get({
-      success: res => this.setData({ rankList: res.data }),
-      fail: err => console.error("获取排行失败", err)
-    });
-  },
+// --- 4. 修改：拉取排行榜 ---
+fetchRankList() {
+  wx.request({
+    url: `${LAF_URL}/get-rank`,
+    method: 'GET',
+    success: (res) => {
+      if (res.data && res.data.data) {
+        this.setData({ rankList: res.data.data });
+      }
+    }
+  });
+},
 
   onNameConfirm(e) {
     const name = e.detail.value.nickname;
@@ -368,44 +444,51 @@ onInputNickname(e) {
 },
 
 // 2. 确认保存按钮
+// --- 2. 修改：重名校验逻辑 ---
 saveNameAndScore() {
   const name = this.data.defaultNickname;
+  // 关键：强制从本地缓存拿一次，防止 data 里的没同步成功
+  const openid = this.data.user_openid || wx.getStorageSync('user_openid');
+  
+  console.log('--- 准备校验名字 ---');
+  console.log('待查名字:', name);
+  console.log('当前用户ID:', openid);
+
+  if (!openid) {
+    wx.showToast({ title: '账号同步中，请稍后再试', icon: 'none' });
+    return;
+  }
+  
   if (!name || name.trim() === '') {
     wx.showToast({ title: '请输入名字', icon: 'none' });
     return;
   }
-  wx.showLoading({ title: '核对名号中...' });
-  const db = wx.cloud.database();
-  
-  // 查询数据库中是否已有该名字
-  db.collection('rank-king').where({
-    name: name
-  }).get().then(res => {
-    wx.hideLoading();
-    
-    if (res.data.length > 0) {
-      // 关键判断：查到了这个名字，但 _openid 是不是我？
-      // 注意：在小程序端直接读取的 res.data[0]._openid 
-      // 只有在权限设置为“所有人可读，仅创建者可写”时才有效
-      const record = res.data[0];
-      
-      // 如果云开发环境中没有开启“自动注入openid”，
-      // 我们可以简单地认为：只要查到这个名字，且本地没存过，就是重名
-      if (wx.getStorageSync('user_nickname') !== name) {
-         wx.showModal({
-           title: '名号被占领',
-           content: '真不凑巧，江湖上已有同名大侠，换个响亮的名字吧！',
-           showCancel: false
-         });
-         return; 
-      }
-    }
-    
-    // 校验通过，执行保存
-    this.executeSave(name);
-  });
 
+  wx.showLoading({ title: '核对名号中...' });
   
+  // 改为请求 Laf 校验名字
+  wx.request({
+    url: `${LAF_URL}/check-name`, // 需要在Laf建立此函数
+    method: 'POST',
+    data: { name: name, openid: openid },
+    success: (res) => {
+      wx.hideLoading();
+      // 如果 code 为 1 表示名字被别人占用了
+      if (res.data.code === 1) {
+        wx.showModal({
+          title: '名号被占领',
+          content: '真不凑巧，江湖上已有同名大侠，换个响亮的名字吧！',
+          showCancel: false
+        });
+      } else {
+        this.executeSave(name);
+      }
+    },
+    fail: () => {
+      wx.hideLoading();
+      this.executeSave(name); // 失败时保底允许保存
+    }
+  });
 },
 executeSave(name) {
   wx.setStorageSync('user_nickname', name);
@@ -432,79 +515,114 @@ executeSave(name) {
 checkGameOver() {
   if (this.hasAvailableMoves()) return;
 
+  // 1. 异步锁：确保云端数据已读完
+  if (this.data.isCloudSyncing) {
+    this._syncRetry = (this._syncRetry || 0) + 1;
+      if (this._syncRetry < 5) { // 最多等待 2.5 秒
+    wx.showLoading({ title: '核对名号中...', mask: true });
+    setTimeout(() => {
+      wx.hideLoading();
+      this.checkGameOver();
+    }, 500);
+    return;
+  }else {
+    console.warn("同步超时，强制进入结算");
+    this.setData({ isCloudSyncing: false });
+  }
+}
+  this._syncRetry = 0;
+    wx.hideLoading();
+
   const count = this.data.pieceCount;
-  // 综合判断：本地缓存里没有，且云端也没查到过
   const savedName = wx.getStorageSync('user_nickname');
-  const hasName = savedName || this.data.hasCloudName; 
+  const hasName = !!(savedName || this.data.hasCloudName); 
+  // --- 关键打印开始 ---
+  console.log('===== 每局结算诊断报告 =====');
+  console.log('1. 本局得分(count):', count);
+  console.log('2. 本地缓存名字(savedName):', savedName);
+  console.log('3. 云端同步标记(hasCloudName):', this.data.hasCloudName);
+  console.log('4. 综合判定是否有名(hasName):', hasName);
+  
+  // --- 关键打印结束 ---
+  // 2. 判定是否需要“记录大名”弹窗
+  // 条件：成绩合格(<=10) 且 全局都没名字
+  const needNickName = (count <= 10) && !hasName;
 
-  // const savedName = wx.getStorageSync('user_nickname');
+  // 3. 判定是否需要“更新云端纪录”
+  // 条件：有名字 且 成绩合格 且 真的打破了云端纪录（count越小越好）
+  const cloudBest = this.data.cloudBestScore || 99;
+  console.log('5. 云端历史纪录分数(cloudBest):', cloudBest);
+  const breakCloudRecord = hasName && (count <= 10) && (count < cloudBest);
+
+  // 更新本地显示的最高分（用于UI显示）
   const lastBest = wx.getStorageSync('best_score') || 99;
-  const isNewRecord = count < lastBest;
-  const isQualified = count <= 10;
-
-  // 更新本地最高分记录
-  if (isNewRecord) {
+  if (count < lastBest) {
     wx.setStorageSync('best_score', count);
   }
+  console.log('6. 最终判定 - 是否需要弹窗起名(needNickName):', needNickName);
+  console.log('7. 最终判定 - 是否打破云端纪录:', (hasName && count < cloudBest));
+  console.log('============================');
+  this.showRank(count); // 显示结算内容
 
-  // 判定是否需要后续起名（符合资格且没存过名字）
-  const needNickName = isQualified && !hasName;
-
-  // 1. 始终先显示结果弹窗
-  this.showRank(count);
-
-  // 2. 将起名状态存入 data，但不立刻显示起名弹窗
   this.setData({
     tempCount: count,
     needNickName: needNickName 
   });
 
-  // 3. 如果已经有名字且破纪录，直接静默上传
-  if (isQualified && isNewRecord && savedName) {
-    this.doSaveRecord(savedName, count);
+  // 4. 如果是老玩家打破了云端纪录，直接静默上传，不弹窗
+  if (breakCloudRecord) {
+    console.log('【动作】检测到破纪录，正在静默更新云端...');
+    const finalName = savedName || this.data.defaultNickname;
+    this.doSaveRecord(finalName, count, true); 
+    // 更新本地记录的云端分数，防止同一次运行重复上传
+    this.setData({ cloudBestScore: count }); 
   }
 
-  // 4. 表现好就放烟花
-  if (count <= 10) {
-    this.triggerCelebration();
-  }
+  if (count <= 10) this.triggerCelebration();
 },
   closeNameModal() {
     this.setData({ showNickNameModal: false, showResult: true });
   },
 
-  doSaveRecord(name, count) {
-    if (this.data.isSubmitting) return;
-    this.setData({ isSubmitting: true });
-    wx.showLoading({ title: '记录中...' });
+  // --- 3. 修改：保存成绩逻辑（含进步判定） ---
+  doSaveRecord(name, count, isSilent = false) {
+    if (this.isSubmitting) return;
     
-    const db = wx.cloud.database();
-    db.collection('rank-king').where({_openid: '{openid}' }).get().then(res => {
-      if (res.data.length > 0) {
-        const docId = res.data[0]._id;
-        if (count < res.data[0].count) {
-          return db.collection('rank-king').doc(docId).update({
-            data: { name: name,count: count, createTime: db.serverDate() }
-          });
+    // 逻辑判定：只有进步才更新
+    const cloudBest = this.data.cloudBestScore || 99;
+    if (this.data.hasCloudName && count >= cloudBest) {
+      console.log('【拦截】未超越历史纪录');
+      return;
+    }
+
+    this.isSubmitting = true; 
+    if (!isSilent) wx.showLoading({ title: '记录中...' });
+    
+    const openid = this.data.user_openid || wx.getStorageSync('user_openid');
+
+    wx.request({
+      url: `${LAF_URL}/save-score`,
+      method: 'POST',
+      data: { name, count, openid },
+      success: (res) => {
+        if (res.data.code === 0) {
+          this.setData({ cloudBestScore: count, hasCloudName: true });
+          this.afterSaveSuccess(isSilent);
         }
-      } else {
-        return db.collection('rank-king').add({
-          data: { name, count, createTime: db.serverDate() }
-        });
+      },
+      finally: () => {
+        if (!isSilent) wx.hideLoading();
+        this.isSubmitting = false;
       }
-    }).then(() => {
-      this.afterSaveSuccess();
-    }).catch(err => {
-      console.error("保存失败", err);
-    }).finally(() => {
-      wx.hideLoading();
-      this.setData({ isSubmitting: false });
     });
   },
 
-  afterSaveSuccess() {
-    wx.showToast({ title: '金榜题名！' });
-    this.fetchRankList();
+  afterSaveSuccess(isSilent) {
+    wx.showToast({ 
+      title: isSilent ? '纪录已更新！' : '金榜题名！',
+      icon: 'success'
+    });
+    this.fetchRankList(); // 统一负责刷新
   },
 
   undoMove() {
