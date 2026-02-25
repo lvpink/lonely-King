@@ -13,7 +13,6 @@
       </view>
     </view>
   </view>
-
   <view class="modal-overlay" wx:if="{{showResult}}">
     <view class="rules-modal">
       <view class="modal-content" style="padding: 60rpx 40rpx;">
@@ -44,12 +43,10 @@
   </view>
   <canvas type="2d" id="confettiCanvas" style="position:fixed; top:0; left:0; width:100vw; height:100vh; pointer-events:none; z-index:999999;">
   </canvas>
-  
   <view class="modal-overlay" wx:if="{{showRankModal}}">
     <view class="rules-modal rank-modal-custom">
       <view class="modal-content">
         <text class="modal-title">🏆 智力排行榜</text>
-
         <scroll-view scroll-y="true" class="rank-scroll">
           <block wx:for="{{rankList}}" wx:key="_id">
             <view class="rank-card {{index < 3 ? 'top-three' : ''}}">
@@ -70,7 +67,6 @@
             </view>
           </block>
         </scroll-view>
-
         <view class="rank-btn-group">
           <button wx:if="{{needNickName}}" class="back-btn" bindtap="closeRank">返回</button>
           <button class="confirm-btn restart-btn" bindtap="startNewGame" style="{{needNickName ? '' : 'width: 100%;'}}">开始新挑战</button>
@@ -78,7 +74,6 @@
       </view>
     </view>
   </view>
- 
   <view class="header">
     <view class="score-card" bindtap="triggerCelebration"> <text class="label">剩余：</text>
       <text class="num">{{pieceCount}}</text>
@@ -88,7 +83,6 @@
       <view class="action-btn reset-btn" bindtap="resetGame">重置</view>
     </view>
   </view>
-
   <view class="board-area">
     <view class="game-board">
       <block wx:for="{{boardData}}" wx:for-index="ri" wx:for-item="row" wx:key="ri">
@@ -103,12 +97,10 @@
       </block>
     </view>
   </view>
-
   <view class="footer-watermark" wx:if="{{!showModal && !showResult && !showNickNameModal && !showRankModal}}">
     <view class="double-color-text">
       <text class="base-text">Copyright © lvyw</text>
       <text class="top-text">Copyright © lvyw</text>
     </view>
   </view>
-
 </view>
