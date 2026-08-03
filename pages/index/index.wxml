@@ -1,7 +1,7 @@
 <view class="game-container">
   <view class="modal-overlay" wx:if="{{showModal}}">
     <view class="rules-modal">
-      <image class="modal-banner" src="http://picnew11.photophoto.cn/20170315/napolun-22544446_1.jpg" mode="aspectFill"></image>
+      <image class="modal-banner" src="../../img/npl.jpg" mode="aspectFill"></image>
       <view class="modal-content">
         <text class="modal-title">琉璃孤独棋</text>
         <view class="modal-desc">
